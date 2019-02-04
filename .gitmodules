@@ -1,0 +1,3 @@
+[submodule "LodSeq"]
+	path = LodSeq
+	url = git@github.com:CNRGH/LodSeq.git

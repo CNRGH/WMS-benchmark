@@ -22,7 +22,7 @@ variables:
      - export PATH=/usr/local/miniconda/bin:$PATH
      - conda update conda
      - conda install pip
-     - if [[ ! -d lodseq ]]; then git clone https://github.com/CNRGH/LodSeq.git lodseq; fi
+     - git clone https://github.com/CNRGH/LodSeq.git lodseq
      - pushd lodseq/
      - curl -LO ftp://ftp.ncbi.nlm.nih.gov/hapmap/recombination/2011-01_phaseII_B37/genetic_map_HapMapII_GRCh37.tar.gz
      - mkdir -p data/inputs/genetic_map_HapMapII_GRCh37 
@@ -57,5 +57,21 @@ variables:
         - nextflow -v
         - popd
 
+.test_genetic_data_with_cromwell: &test_genetic_data_with_cromwell
+    stage: test 
+    extends: .prepare_environment
+    script:
+        - pushd lodseq/ 
+        - conda env create -n lodseq --file environment.yaml
+        - cromwell_version=${CI_JOB_NAME/*-}
+        - conda install -n lodseq -c conda-forge -c bioconda openjdk=8 sbt scala
+        - curl -LO https://github.com/broadinstitute/cromwell/releases/download/${cromwell_version}/cromwell-${cromwell_version}.jar
+        - source activate lodseq
+        - java -version
+        - java -jar cromwell-${cromwell_version}.jar --version
+        - popd
+
 test_genetic_data_with_snakemake-4.8.0: *test_genetic_data_with_snakemake
 test_genetic_data_with_nextflow-0.32.0: *test_genetic_data_with_nextflow
+test_genetic_data_with_cromwell-36: *test_genetic_data_with_cromwell
+

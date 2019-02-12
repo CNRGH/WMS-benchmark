@@ -45,4 +45,17 @@ variables:
         - for f in $(ls test/mergeResults/results_*); do diff -q test/mergeResults/${f##*/} data/outputs/mergeResults/${f##*/}; done
         - popd
 
+.test_genetic_data_with_nextflow: &test_genetic_data_with_nextflow
+    stage: test 
+    extends: .prepare_environment
+    script:
+        - pushd lodseq/ 
+        - conda env create -n lodseq --file environment.yaml
+        - nextflow_version=${CI_JOB_NAME/*-}
+        - conda install -n lodseq -c bioconda nextflow=${nextflow_version}
+        - source activate lodseq
+        - nextflow -v
+        - popd
+
 test_genetic_data_with_snakemake-4.8.0: *test_genetic_data_with_snakemake
+test_genetic_data_with_nextflow-0.32.0: *test_genetic_data_with_nextflow

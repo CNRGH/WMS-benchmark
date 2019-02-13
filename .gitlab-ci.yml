@@ -16,7 +16,9 @@ variables:
    
    before_script:
      - yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm https://centos7.iuscommunity.org/ius-release.rpm
-     - yum install -y curl bzip2 gcc bc python36u python36u-devel python36u-setuptools python36u-pip git
+     - yum install -y curl bzip2 which bc python36u python36u-devel python36u-setuptools python36u-pip ant openmpi-devel cppcheck numactl-devel
+     - yum group install -y "Development Tools"  
+     - export PATH=$PATH:/usr/lib64/openmpi/bin/
      - curl -LO https://repo.continuum.io/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
      - bash Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh -b -p /usr/local/miniconda
      - export PATH=/usr/local/miniconda/bin:$PATH
@@ -84,8 +86,42 @@ variables:
         - cwltoil --version
         - popd
 
+.test_genetic_data_with_pmc: &test_genetic_data_with_pmc
+    stage: test 
+    extends: .prepare_environment
+    script:
+        - DIR=$PWD
+        - mkdir -p bin
+        - which mpiexec
+        - which mpirun
+        #- alias mpiexec='mpiexec --allow-run-as-root' #not working
+        - echo -e '#!/bin/bash\n/usr/lib64/openmpi/bin/mpiexec --allow-run-as-root "$@"' > bin/mpiexec
+        - echo -e '#!/bin/bash\n/usr/lib64/openmpi/bin/mpirun --allow-run-as-root "$@"' > bin/mpirun
+        - chmod u+x bin/mpiexec
+        - chmod u+x bin/mpirun
+        - export PATH="$PWD/bin:$PATH"
+        - which mpiexec
+        - which mpirun
+        - pushd lodseq/ 
+        - conda env create -n lodseq --file environment.yaml
+        - popd
+        - pmc_version=${CI_JOB_NAME/*-}
+        - curl -LO https://github.com/pegasus-isi/pegasus/archive/${pmc_version}.tar.gz
+        - tar -xf ${pmc_version}.tar.gz
+        - pushd pegasus-${pmc_version}/src/tools/pegasus-mpi-cluster
+        - ls -l /usr/lib64/openmpi/bin/
+        - make
+        #- make test  #error when runnning mpiexec
+        - make install
+        - popd
+        - pegasus-mpi-cluster --version
+        - pushd $DIR/lodseq/
+        - source activate lodseq
+        - popd
+
 test_genetic_data_with_snakemake-4.8.0: *test_genetic_data_with_snakemake
 test_genetic_data_with_nextflow-0.32.0: *test_genetic_data_with_nextflow
 test_genetic_data_with_cromwell-36: *test_genetic_data_with_cromwell
 test_genetic_data_with_cwltoil-3.18.0: *test_genetic_data_with_cwltoil
+test_genetic_data_with_pmc-4.8.2: *test_genetic_data_with_pmc
 

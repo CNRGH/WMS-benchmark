@@ -1,0 +1,19 @@
+vcf: 
+  class: File
+  path: ~/data/inputs/chr7_mdf.vcf.gz
+tfam: 
+  class: File
+  path: ~/data/inputs/pedigree_mdf.tfam
+dom_model: 
+  class: File
+  path: ~/data/inputs/parametric_dominant.model
+rec_model:
+  class: File 
+  path: ~/data/inputs/parametric_recessive.model
+genetic_maps: 
+  class: Directory
+  path: ~/data/inputs/genetic_map_HapMapII_GRCh37/
+out_prefix: CEPH1463
+lod_threshold: 1.3
+chromosomes: 
+  - '7'

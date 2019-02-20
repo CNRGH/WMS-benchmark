@@ -16,7 +16,7 @@ variables:
    
    before_script:
      - yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm https://centos7.iuscommunity.org/ius-release.rpm
-     - yum install -y curl bzip2 which bc python36u python36u-devel python36u-setuptools python36u-pip ant openmpi-devel cppcheck numactl-devel graphviz
+     - yum install -y curl bzip2 which bc python36u python36u-devel python36u-setuptools python36u-pip ant openmpi-devel cppcheck numactl-devel graphviz nodejs
      - yum group install -y "Development Tools"  
      - export PATH=$PATH:/usr/lib64/openmpi/bin/
      - curl -LO https://repo.continuum.io/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
@@ -94,13 +94,43 @@ variables:
     stage: test 
     extends: .prepare_environment
     script:
-        - pushd lodseq/ 
+        - pushd lodseq/
+        - python --version
+        # switch from python36 to python27 (due to error with python3.6 toil_v3.18.0 libraries)
+        - conda install python=2.7
         - conda env create -n lodseq --file environment.yaml
         - toil_version=${CI_JOB_NAME/*-}
         - pip install toil[cwl]==${toil_version}
         - source activate lodseq
+        - python --version
         - toil --version
         - cwltoil --version
+        - OUTDIR=${PWD}/test 
+        - mkdir -p ${OUTDIR}/WORKDIR ${OUTDIR}/TMPDIR_PREFIX ${OUTDIR}/TMP_OUTDIR_PREFIX
+        - mkdir -p ~/WMS-benchmark/LodSeq
+        - cp -pr scripts ~/WMS-benchmark/LodSeq/
+        - cp -p ../workflows/cwltoil/*.cwl .
+        - cp -p ../workflows/cwltoil/config_CEPH1463.yml .
+        # replace relative path by absolute path in *.yml and *.cwl files
+        #  otherwise cwltoil fails
+        - sed -ie 's|\~|'"$PWD"'|g' config_CEPH1463.yml
+        - sed -ie 's|\~|'"$HOME"'|g' *.cwl
+        - cat config_CEPH1463.yml
+        - | 
+          cwltoil \
+            --preserve-environment USER HOME \
+            --workDir ${OUTDIR}/WORKDIR \
+            --tmpdir-prefix ${OUTDIR}/TMPDIR_PREFIX \
+            --tmp-outdir-prefix ${OUTDIR}/TMP_OUTDIR_PREFIX \
+            --cleanWorkDir never \
+            --clean never \
+            --outdir ${OUTDIR} \
+            --jobStore ${OUTDIR}/jobstore \
+            --maxCores 1 \
+            ${PWD}/lodseq.cwl \
+            ${PWD}/config_CEPH1463.yml
+        - tar xf data/outputs/mergeResults.tar.gz -C data/outputs/
+        - for f in $(ls test/mergeResults/results_*); do diff -q test/mergeResults/${f##*/} data/outputs/mergeResults/${f##*/}; done
         - popd
 
 .test_genetic_data_with_pmc: &test_genetic_data_with_pmc

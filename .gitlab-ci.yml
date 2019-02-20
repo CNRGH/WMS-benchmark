@@ -76,8 +76,18 @@ variables:
         - conda install -n lodseq -c conda-forge -c bioconda openjdk=8 sbt scala
         - curl -LO https://github.com/broadinstitute/cromwell/releases/download/${cromwell_version}/cromwell-${cromwell_version}.jar
         - source activate lodseq
+        - mkdir test/
+        - CROMWELL="cromwell-${cromwell_version}.jar"
         - java -version
-        - java -jar cromwell-${cromwell_version}.jar --version
+        - java -jar ${CROMWELL} --version
+        - WDL=../workflows/cromwell/lodseq.wdl
+        - JSON=../workflows/cromwell/lodseq_inputs_CEPH1463.json
+        - sed -ie 's|\~|'"$PWD"'|g' ${JSON}
+        - LOCAL_BACKEND=../workflows/cromwell/backends/local_1cpus_cromwell29.conf
+        - cat ${JSON}
+        - java -XX:ParallelGCThreads=2 -XX:CICompilerCount=2 -Xmx4g -Xms256m -Dconfig.file=${LOCAL_BACKEND} -jar ${CROMWELL} run ${WDL} -i ${JSON}
+        - tar xf data/outputs/mergeResults.tar.gz -C data/outputs/
+        - for f in $(ls test/mergeResults/results_*); do diff -q test/mergeResults/${f##*/} data/outputs/mergeResults/${f##*/}; done
         - popd
 
 .test_genetic_data_with_cwltoil: &test_genetic_data_with_cwltoil

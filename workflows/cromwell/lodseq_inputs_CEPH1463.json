@@ -1,0 +1,14 @@
+{
+  "lodseq.chromosomes": ["7"],
+  "lodseq.inTfamPath": "~/data/inputs/pedigree_mdf.tfam",
+  "lodseq.inGVCFPath": "~/data/inputs/chr7_mdf.vcf.gz",
+  "lodseq.inGeneticMapsDirPath": "~/data/inputs/genetic_map_HapMapII_GRCh37/",
+  "lodseq.inDomModelPath": "~/data/inputs/parametric_dominant.model",
+  "lodseq.inRecModelPath": "~/data/inputs/parametric_recessive.model",
+  "lodseq.outDirPath": "~/test/",
+  "lodseq.outPrefixPath": "CEPH1463",
+  "lodseq.outLogPath": "~/test/lodseq.log",
+  "lodseq.inLodThreshold": "1.3",
+  "lodseq.THREADS": "1",
+  "lodseq.inScriptsDirPath": "~/scripts"
+}

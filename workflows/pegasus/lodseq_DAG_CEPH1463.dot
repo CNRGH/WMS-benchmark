@@ -1,0 +1,11 @@
+digraph geneticLinkage {
+"prepareVCF" -> "splitByChromChr7"
+"splitByChromChr7" -> "prepareSinglePointFilesChr7"
+"splitByChromChr7" -> "runSinglePointMerlinChr7"
+"prepareSinglePointFilesChr7" -> "runSinglePointMerlinChr7"
+"splitByChromChr7" -> "prepareMultiPointFilesChr7"
+"prepareGeneticMapsChr7" -> "prepareMultiPointFilesChr7"
+"prepareMultiPointFilesChr7" -> "runMultiPointMerlinChr7"
+"runSinglePointMerlinChr7" -> "mergeResults"
+"runMultiPointMerlinChr7" -> "mergeResults"
+}

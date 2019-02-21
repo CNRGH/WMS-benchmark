@@ -158,12 +158,43 @@ variables:
         - pushd pegasus-${pmc_version}/src/tools/pegasus-mpi-cluster
         - ls -l /usr/lib64/openmpi/bin/
         - make
-        #- make test  #error when runnning mpiexec
+        #- make test  #memory affinity error when runnning mpiexec or mpirun
         - make install
         - popd
         - pegasus-mpi-cluster --version
         - pushd $DIR/lodseq/
         - source activate lodseq
+        - mkdir -p ~/benchmarkWMS
+        - cp -pr scripts ~/benchmarkWMS
+        - cp ../workflows/pegasus/mergeResultsByDir.sh ~/benchmarkWMS/scripts
+        - cp -p ../workflows/pegasus/* .
+        - OUTDIR=${PWD}/test
+        - mkdir -p ${OUTDIR}
+        - chmod u+x get_pegasus_lodseq_DAG.sh
+        - DAG=lodseq_DAG_CEPH1463.dag
+        - DOT=lodseq_DAG_CEPH1463.dot
+        #generate PMC dag
+        - |
+          ./get_pegasus_lodseq_DAG.sh \
+            -i ${PWD}/data/inputs/chr7_mdf.vcf.gz \
+            -p ${PWD}/data/inputs/pedigree_mdf.tfam \
+            -g ${PWD}/data/inputs/genetic_map_HapMapII_GRCh37/ \
+            -D ${PWD}/data/inputs/parametric_dominant.model \
+            -R ${PWD}/data/inputs/parametric_recessive.model \
+            -c '7' \
+            -o ${OUTDIR} \
+            -s CEPH1463 \
+            -l 1.3 \
+            -t 1 \
+            -d ${DOT} \
+            > ${DAG} 
+        - cat ${DAG}
+        - dot -Tpdf ${DOT} > ${DOT}.pdf
+        # run PMC
+        # --keep-affinity avoid memory affinity error
+        - mpirun -oversubscribe -n 2 pegasus-mpi-cluster --keep-affinity ${DAG}
+        - tar xf data/outputs/mergeResults.tar.gz -C data/outputs/
+        - for f in $(ls test/mergeResults/results_*); do diff -q test/mergeResults/${f##*/} data/outputs/mergeResults/${f##*/}; done
         - popd
 
 test_genetic_data_with_snakemake-4.8.0: *test_genetic_data_with_snakemake

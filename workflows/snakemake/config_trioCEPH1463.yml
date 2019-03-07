@@ -1,0 +1,35 @@
+vcf: ~/trioCEPH1463/inputs/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz
+tfam: ~/trioCEPH1463/inputs/pedigree_trioCEPH1463.tfam
+dom_model: ~/data/inputs/parametric_dominant.model
+rec_model: ~/data/inputs/parametric_recessive.model
+genetic_maps: ~/data/inputs/genetic_map_HapMapII_GRCh37
+out_dir: ~/trioCEPH1463/snakemake
+out_log: ~/trioCEPH1463/snakemake/lodseq_trioCEPH1463.log
+out_prefix: trioCEPH1463 
+threads: 1
+lod_threshold: 0.3
+chromosomes:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20 
+  - 21
+  - 22
+  - X
+  - Y

@@ -1,5 +1,11 @@
 #!/usr/bin/env nextflow
 
+/*
+ * Copyright 2018 CEA CNRGH (Centre National de Recherche en Genomique Humaine) 
+ *                    <www.cnrgh.fr>                                            
+ * Author: Elise LARSONNEUR (elise.larsonneur@cea.fr)                           
+ */
+
 /* 
  * LODSEQ WORKFLOW 
  */

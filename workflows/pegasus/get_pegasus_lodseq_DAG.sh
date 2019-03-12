@@ -1,4 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+################################################################################
+# Copyright 2018 CEA CNRGH (Centre National de Recherche en Genomique Humaine) #
+#                    <www.cnrgh.fr>                                            #
+# Author: Elise LARSONNEUR (elise.larsonneur@cea.fr)                           #
+################################################################################
+
 set -eo pipefail
 
 ########################################################################################
@@ -133,8 +140,7 @@ function main {
         MINLODTH="${OPTARG}"
         if ! [[ "${MINLODTH}" =~ ^[0-9]+\.?[0-9]*$ ]] || \
           [[ "$(echo "${MINLODTH}<=0" | bc -l)" -eq 1 ]]; then
-          echo '[ERROR] The lod-score threshold must be greater than 0 \
-(option -l).' >&2
+          echo '[ERROR] The lod-score threshold must be greater than 0 (option -l).' >&2
           exit 1
         fi
         ;; # -l <float>
@@ -144,7 +150,7 @@ function main {
         ;; # -t <number of threads>
       d)
         DAG="${OPTARG}";
-        DAGDIR=$(dirname $DAG);
+        DAGDIR=$(dirname "$DAG");
         if [[ ! -d "${DAGDIR}" ]]; then echo "[ERROR] Output directory of .dot file '${DAGDIR}' does not exist (option -d). Please create it." 1>&2; exit 1 ; fi
         ;; # -d <outFile>
       :)
@@ -212,7 +218,7 @@ bash -c "mkdir -p $OUTDIR/prepareVCF \
 || echo \$? > ${LOGPREF}.rc ; \
 exit \$(cat ${LOGPREF}.rc)"
 EOF
-  NB_TASKS=$(($NB_TASKS + 1))
+  NB_TASKS=$((NB_TASKS + 1))
 
   #2-run next steps for each chromosome
   for CHROM in $CHROMOSOMES; do 
@@ -359,7 +365,7 @@ bash -c "mkdir -p $OUTDIR/mergeResults \
 exit \$(cat ${LOGPREF}.rc)"
 EOF
 
-  NB_TASKS=$(($NB_TASKS + 1))
+  NB_TASKS=$((NB_TASKS + 1))
 
 
 
@@ -367,31 +373,31 @@ EOF
   #        AND PRINT DOT FILE OF THE DAG
   echo ''
   echo '#EDGES OF THE DAG' #COMMENTS MUST BE PRECEDED BY A '#' IN THE DAG FILE
-  echo 'digraph geneticLinkage {' > ${DAG}
+  echo 'digraph geneticLinkage {' > "${DAG}"
   for CHROM in $CHROMOSOMES; do
     echo "EDGE prepareVCF splitByChromChr${CHROM}"
-    echo "\"prepareVCF\" -> \"splitByChromChr${CHROM}\"" >> ${DAG}
+    echo "\"prepareVCF\" -> \"splitByChromChr${CHROM}\"" >> "${DAG}"
     echo "EDGE splitByChromChr${CHROM} prepareSinglePointFilesChr${CHROM}"
-    echo "\"splitByChromChr${CHROM}\" -> \"prepareSinglePointFilesChr${CHROM}\"" >> ${DAG}
+    echo "\"splitByChromChr${CHROM}\" -> \"prepareSinglePointFilesChr${CHROM}\"" >> "${DAG}"
     echo "EDGE splitByChromChr${CHROM} runSinglePointMerlinChr${CHROM}"
-    echo "\"splitByChromChr${CHROM}\" -> \"runSinglePointMerlinChr${CHROM}\"" >> ${DAG}
+    echo "\"splitByChromChr${CHROM}\" -> \"runSinglePointMerlinChr${CHROM}\"" >> "${DAG}"
     echo "EDGE prepareSinglePointFilesChr${CHROM} runSinglePointMerlinChr${CHROM}"
-    echo "\"prepareSinglePointFilesChr${CHROM}\" -> \"runSinglePointMerlinChr${CHROM}\"" >> ${DAG}
+    echo "\"prepareSinglePointFilesChr${CHROM}\" -> \"runSinglePointMerlinChr${CHROM}\"" >> "${DAG}"
     echo "EDGE splitByChromChr${CHROM} prepareMultiPointFilesChr${CHROM}"
-    echo "\"splitByChromChr${CHROM}\" -> \"prepareMultiPointFilesChr${CHROM}\"" >> ${DAG}
+    echo "\"splitByChromChr${CHROM}\" -> \"prepareMultiPointFilesChr${CHROM}\"" >> "${DAG}"
     echo "EDGE prepareGeneticMapsChr${CHROM} prepareMultiPointFilesChr${CHROM}"
-    echo "\"prepareGeneticMapsChr${CHROM}\" -> \"prepareMultiPointFilesChr${CHROM}\"" >> ${DAG}
+    echo "\"prepareGeneticMapsChr${CHROM}\" -> \"prepareMultiPointFilesChr${CHROM}\"" >> "${DAG}"
     echo "EDGE prepareMultiPointFilesChr${CHROM} runMultiPointMerlinChr${CHROM}"
-    echo "\"prepareMultiPointFilesChr${CHROM}\" -> \"runMultiPointMerlinChr${CHROM}\"" >> ${DAG}
+    echo "\"prepareMultiPointFilesChr${CHROM}\" -> \"runMultiPointMerlinChr${CHROM}\"" >> "${DAG}"
     echo "EDGE runSinglePointMerlinChr${CHROM} mergeResults"
-    echo "\"runSinglePointMerlinChr${CHROM}\" -> \"mergeResults\"" >> ${DAG}
+    echo "\"runSinglePointMerlinChr${CHROM}\" -> \"mergeResults\"" >> "${DAG}"
     echo "EDGE runMultiPointMerlinChr${CHROM} mergeResults"
-    echo "\"runMultiPointMerlinChr${CHROM}\" -> \"mergeResults\"" >> ${DAG}
-    NB_TASKS=$(($NB_TASKS + 6))
+    echo "\"runMultiPointMerlinChr${CHROM}\" -> \"mergeResults\"" >> "${DAG}"
+    NB_TASKS=$((NB_TASKS + 6))
   done
 
   echo "Number of tasks: $NB_TASKS" 1>&2
-  echo "}" >> ${DAG}
+  echo "}" >> "${DAG}"
 
 }
 

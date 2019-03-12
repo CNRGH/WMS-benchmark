@@ -1,3 +1,10 @@
+################################################################################
+# Copyright 2018 CEA CNRGH (Centre National de Recherche en Genomique Humaine) #
+#                    <www.cnrgh.fr>                                            #
+# Author: Elise LARSONNEUR (elise.larsonneur@cea.fr)                           #
+################################################################################
+
+
 ## This workflow computes LOD SCORES from an input gVCF file using MERLIN
 workflow lodseq {
 
@@ -145,6 +152,12 @@ workflow lodseq {
            inSglRecLodScoreFiles=runSinglePointMerlin.outRecLodScoresWoHeader,  ## Array of files '${outDir}/results_singlepoint_chr${chrom}_${model}.woheader.txt'
            inMultiDomLodScoreFiles=runMultiPointMerlin.outDomLodScoresWoHeader,  ## Array of files '${outDir}/results_multipoint_chr${chrom}_${model}.woheader.txt'
            inMultiRecLodScoreFiles=runMultiPointMerlin.outRecLodScoresWoHeader  ## Array of files '${outDir}/results_multipoint_chr${chrom}_${model}.woheader.txt' 
+ }
+
+
+meta {
+    author: "Elise Larsonneur"
+    email: "elise.larsonneur@cea.fr"
  }
 
 

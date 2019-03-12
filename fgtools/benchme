@@ -1,0 +1,290 @@
+#!/bin/bash
+#==============================================================================
+#  This script is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  fgtools is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with fgtools.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright 2015-2017 CEA/DRF/IBFJ CNRGH <www.cnrgh.fr>
+#==============================================================================
+# A nice little wrapper around /usr/bin/time.
+#==============================================================================
+# Copyright:     CEA - Institut Francois Jacob
+# Author:        Nicolas Wiart <nicolas.wiart@cng.fr>
+# $LastChangedDate:: 2017-09-28 14:50:21#$
+# $Revision: 167 $
+# Requires:      bash >= 3.2, time, grep, sed, stat, python
+# Optional:      numactl, hwloc-ps
+#==============================================================================
+
+TOPTS=
+TSHELL=
+TITLE=
+PROG=
+CORES=0
+COREMOD=0
+BUF_=
+OF_=
+FULLCMD=false
+USENV=false
+FILEMETRICS=false
+
+while [ -n "${1:-}" ]; do
+    case "$1" in
+        --help)
+            printf -- "$0 [-EPacefuvx][-n cores][-p corelist][-t title][-s file][-o outputfile] command [arguments...]\n\n"
+            printf "Wrapper around /usr/bin/time to pass a nice output format\n"
+            printf "and has a -c option shortcut to call bash -c.\n\n"
+            printf -- "-a\tAppends to the -o outputfile instead of overwriting.\n\n"
+            printf -- "-c\tWraps the command and arguments inside a subshell.\n\n"
+            printf "\tUse this when your command is a shell construct (pipes,\n"
+            printf "\tredirections, multiple commands).\n\n"
+            printf -- "-E\tUse the TIME environment variable to pass the format instead\n\tof an option.\n\n"
+            printf -- "-e\tSame effect as bash -e when used with -c.\n\n"
+            printf -- "-f\tInclude the full command line in the report.\n\n"
+            printf -- "-n cores\n\tNumber of CPU cores to limit the command to.\n\n"
+            printf -- "-o outputfile\n\tWrite the report to this file instead of stderr.\n\n"
+            printf -- "-p corelist\n\tList of CPU core IDs to limit the command to.\n\n"
+            printf -- "-u\tSame effect as bash -u when used with -c.\n\n"
+            printf -- "-v\tIncrease verbosity.\n\n"
+            printf -- "-t title\n\tUse specified text as program title in report instead of guessing.\n\n"
+            printf -- "-s file\n\tPrint file size summary and overall file processing speed.\n\n"
+            printf -- "-x\tSame effect as bash -x when used with -c.\n\n"
+            exit 0
+            ;;
+        -E) USENV=true ;;
+        -a) TOPTS="$TOPTS -a" ;;
+        -c|-e|-u|-x) TSHELL="${TSHELL:-bash} $1"; PROG="${PROG:-bash}"; BUF_="$TSHELL";;
+        -P) TSHELL="${TSHELL:-bash} -o pipefail"; PROG="${PROG:-bash}"; BUF_="$TSHELL";;
+        -f) FULLCMD=true ;;
+        -o)   if [ "$2" = pipefail ]; then
+                  printf -- "Error: option -o pipefail of bash should be -P in benchme.\n" >&2
+                  TSHELL="${TSHELL:-bash} -o pipefail"
+                  PROG="${PROG:-bash}"
+                  BUF_="$TSHELL"
+              else
+                  OF_="$2" ; TOPTS="$TOPTS -o $OF_"
+              fi
+              shift
+              ;;
+        -ao)  OF_="$2" ; TOPTS="$TOPTS -a -o $OF_"; shift ;;
+        -p) CORES="$2"; COREMOD=1; shift ;;
+        -p[1-9]*)
+            CORES="${1:2}"
+            COREMOD=1
+            ;;
+        -n) CORES="$2"; COREMOD=2; shift ;;
+        -n[1-9]*)
+            CORES="${1:2}"
+            COREMOD=2
+            ;;
+        -s) FILEMETRICS=true
+            F="$2"
+            shift
+            ;;
+        -t|--title) TITLE="$2"; shift ;;
+        --title=*)  TITLE="${1:8}" ;;
+        -v) TOPTS="$TOPTS -v" ;;
+        --version) printf "$0 1.3\n" ; exit 0 ;;
+        -[EPacefuvx][EPacefouvx]*)
+            N="${1:1}"
+            while [ -n "${N:0:1}" ]; do
+                if [ "${N:0:1}" = 'a' ]; then
+                    TOPTS="$TOPTS -a"
+                elif [ "${N:0:1}" = 'E' ]; then
+                    USENV=true
+                elif [ "${N:0:1}" = 'c' -o "${N:0:1}" = 'x' -o "${N:0:1}" = 'e' -o "${N:0:1}" = 'u' ]; then
+                    TSHELL="${TSHELL:-bash} -${N:0:1}"
+                    PROG="${PROG:-bash}"
+                    BUF_="$TSHELL"
+                elif [ "${N:0}" = 'o' ]; then
+                    if [ "${2:-}" = pipefail ]; then
+                        printf -- "Error: option -o pipefail of bash should be -P in benchme.\n" >&2
+                        TSHELL="${TSHELL:-bash} -o pipefail"
+                        PROG="${PROG:-bash}"
+                        BUF_="$TSHELL"
+                        shift
+                    elif [ -n "${2:-}" ]; then
+                        OF_="$2" ; TOPTS="$TOPTS -o $OF_"
+                        shift
+                    fi
+                elif [ "${N:0:1}" = 'P' ]; then
+                    TSHELL="${TSHELL:-bash} -o pipefail"
+                    PROG="${PROG:-bash}"
+                    BUF_="$TSHELL"
+                elif [ "${N:0:1}" = 'f' ]; then
+                    FULLCMD=true
+                elif [ "${N:0:1}" = 'v' ]; then
+                    TOPTS="$TOPTS -v"
+                fi
+                N="${N:1}"
+            done
+            ;;
+        --) shift ; break ;;
+        *)  break ;;
+    esac
+    shift
+done
+
+if [ -n "$TSHELL" -a "${TSHELL:(-2):2}" != '-c' ]; then
+    TSHELL="$TSHELL -c"
+fi
+
+if $FULLCMD ; then
+    for X_ in "$@" ; do
+        if [[ "$X_" =~ ^[^\']*\"[^\']*$ ]]; then
+            BUF_="${BUF_}${BUF_:+ }'${X_}'"
+        elif [[ "$X_" =~ ^.*[^0-9A-Za-z_~:%/@=-].*$ ]]; then
+            BUF_="${BUF_}${BUF_:+ }\"${X_//\"/\\\"}\""
+        else
+            BUF_="${BUF_}${BUF_:+ }${X_}"
+        fi
+    done
+    unset X_
+fi
+
+if [ -z "$PROG" ]; then
+    ARG=
+    TARGET=Script
+    PROG=$(basename "${1:-}")
+    if [[ "$PROG" =~ ^(java|python|python[234].*|perl|samtools)$ ]]; then
+        BUF=$(echo "$@")
+        case "$PROG" in
+            java)
+                ARG=$(grep -oE -- '-jar +[^ ]+\.jar' <<< "$BUF" | sed '1s/-jar //p;d')
+                [ -z "$ARG" ] && \
+                ARG=$(grep -oE '\<[a-z][a-z.]+\.[A-Z][A-Za-z0-9._]+\>' <<< "$BUF" | head -1)
+                TARGET=Main
+                ;;
+            perl)
+                ARG=$(grep -Ewo -- '[^ ]+[A-Za-z0-9]+\.[Pp][Ll]' <<< "$BUF" | head -1)
+                ;;
+            python*)
+                ARG=$(grep -Ewo -- '[^ ]+[A-Za-z0-9]+\.py' <<< "$BUF" | head -1)
+                ;;
+            samtools)
+                echo "===============================SAM" >&2
+                TARGET=Subcommand
+                ARG=$(grep -Ewo -- 'samtools +[a-z0-9]+' <<< "$BUF" | head -1)
+                ARG="${ARG/samtools }"
+                ;;
+        esac
+    fi
+fi
+
+NUMACMD=
+if [ -n "$TITLE" ]; then
+    TIMEFMT="=========\nBenchTitle\t${TITLE}\nProgram\t${PROG}\n"
+else
+    TIMEFMT="=========\nProgram\t${PROG}\n"
+fi
+[ -n "$ARG" ] && TIMEFMT="${TIMEFMT}${TARGET}\t${ARG}\n"
+TIMEFMT="${TIMEFMT}ElapsedTime\t%E\nUserTime\t%U\ts\nSystemTime\t%S\ts\nCPU_(U+S)/E\t%P\nSharedText\t%X\tkb\n"
+TIMEFMT="${TIMEFMT}SharedData\t%D\tkb\nPeakMemory\t%M\tkb\nAvgMemory\t%K\tkb\n"
+TIMEFMT="${TIMEFMT}FileInputs\t%I\nFileOutputs\t%O\nMajorPageFaults\t%F\nMinorPageFaults\t%R\nSwaped\t%W\nInvolContextSwitched\t%c\ttimes\nVolContextSwitched\t%w\ttimes\n"
+if [ -n "${SLURM_JOB_ID:-}" ]; then
+    TIMEFMT="${TIMEFMT}Job.Step\t${SLURM_JOB_ID}${SLURM_STEP_ID:+.}${SLURM_STEP_ID:-}\nJobName\t${SLURM_JOB_NAME:-}\n"
+    TIMEFMT="${TIMEFMT}AllocCPUsOnNode\t${SLURM_CPUS_ON_NODE:-}\nCoresPerTask\t${SLURM_CPUS_PER_TASK:-}\n"
+    if [ -n "${SLURM_CPU_BIND_LIST:-}" ]; then
+        TIMEFMT="${TIMEFMT}CPUBindList\t${SLURM_CPU_BIND_LIST}\n"
+    fi
+fi
+if which numactl &> /dev/null -a which hwloc-ps &> /dev/null; then
+    if [ "$PROG" != numactl -a -x /usr/bin/getconf -a $(hwloc-ps -t | wc -l) -gt 0 ]; then
+        # at least one process or thread is bound to a specific CPU core.
+        CORETOTAL=$(/usr/bin/getconf _NPROCESSORS_ONLN)
+        COREIDS=$(numactl -s | sed 's/physcpubind: //p;d')
+        CORECOUNT=$(wc -w <<< "$COREIDS")
+        # if we are bound to a subset of this node's cores, print them.
+        [ "$CORECOUNT" != "$CORETOTAL" ] && TIMEFMT="${TIMEFMT}CoreIDs\t${COREIDS}\n"
+    fi
+    # if further CPU binding has been requested
+    if [ "$COREMOD" != 0 ]; then
+        if [ $COREMOD = 1 ]; then
+            if [[ ! "$CORES" =~ ^[0-9][0-9,-]*$ ]]; then
+                echo "Invalid -p argument: expected valid core list." >&2
+                exit 1
+            fi
+            NUMACMD="/usr/bin/numactl -C $CORES --"
+        else
+            if [[ ! "$CORES" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Invalid -n argument: expected integer between 1 and 9999." >&2
+                exit 1
+            fi
+            N=$((CORES-1))
+            NUMACMD="/usr/bin/numactl -C +0-$N --"
+        fi
+    fi
+elif [ "$CORES" != 0 ]; then
+    echo "Cannot restrict to $CORES CPUs: commands numactl and/or hwloc-ps not found." >&2
+    exit 1
+fi
+
+
+TIMEFMT="${TIMEFMT}ExitVal\t%x\n"
+if $FULLCMD ; then
+    BUF_="${BUF_//%s/%%s}"
+    BUF_="${BUF_//\\/\\\\}"
+    TIMEFMT="${TIMEFMT}FullCommand\t${BUF_:-}\n"
+fi
+
+if $FILEMETRICS ; then
+    TF=$(mktemp)
+    $NUMACMD /usr/bin/time --format='%E %e %U %S %P %M' -o "$TF" /usr/bin/time --format="$TIMEFMT" $TOPTS $TSHELL "$@"
+    r=$?
+    IFS=' ' read E SEC U S P M < "$TF"
+    rm -f "$TF"
+    SP=
+    SZ=
+    T="$PROG${ARG:+ }${ARG:-}"
+    [ -n "$TITLE" ] && T="$TITLE"
+    if [ "$CORES" = 0 ]; then
+        CORES=$(OMP_NUM_THREADS= nproc)
+    fi
+    if [ -e "$F" ]; then
+        SZ=$(stat -c %s "$F" 2> /dev/null)
+    elif [[ "$F" =~ [*()\[\]?]+ ]]; then
+        s_=$(stat -c +%s $F | tr -d '\n')
+        SZ=$(python -c "print(\"%d\" % (0$s_))")
+    fi
+    if [ -n "$SZ" ]; then
+        if [ "${SEC:-0}" != 0 -a "${SEC:-0.00}" != 0.00 ]; then
+            SP=$(python -c "print(\"%.3f\" % (($SZ/1048576.0)/$SEC))")
+        elif [ $r = 0 ]; then
+            SP=instantaneous
+        fi
+    fi
+    if [ "${LC_NUMERIC:-}" != C -a "${LC_NUMERIC:0:2}" != en ]; then
+        if [ "${LANG:0:2}" = fr -o "${LC_ALL:0:2}" = fr -o "${LC_NUMERIC:0:2}" = fr ]; then
+            E="${E//./,}"
+            P="${P//./,}"
+            SP="${SP//./,}"
+        fi
+    fi
+    N='FollowFile\t%s\nTitle\tCores\tElapsed\t%%CPU\tPeakMem\tFileSize\tSpeed\n%s\t%d\t%s\t%s\t%s\t%s\t%s\n=========\n'
+    if [ -n "$OF_" ]; then
+        printf "$N" "$F" "$T" "$CORES" "$E" "$P" "$M" "$SZ" "$SP" >> "$OF_"
+    else
+        printf "$N" "$F" "$T" "$CORES" "$E" "$P" "$M" "$SZ" "$SP" >&2
+    fi
+    exit $r
+else
+    TIMEFMT="${TIMEFMT}========="
+fi
+
+if $USENV ; then
+    export TIME="$TIMEFMT"
+    unset TIMEFMT
+    exec $NUMACMD /usr/bin/time $TOPTS $TSHELL "$@"
+    exit $?
+fi
+
+exec $NUMACMD /usr/bin/time --format="$TIMEFMT" $TOPTS $TSHELL "$@"

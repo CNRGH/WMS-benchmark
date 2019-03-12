@@ -1,0 +1,158 @@
+#!/bin/bash
+#==============================================================================
+#  This script is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  lscores is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with lscores.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright 2017 CEA/DRF/IBFJ CNG <www.cng.fr>
+#==============================================================================
+# Copyright: CEA - Institut de Genomique
+# Author   : Nicolas Wiart  <nicolas.wiart@cng.fr>
+# Date     : 2017-11-08
+# Revised  : 2017-11-08
+#==============================================================================
+
+print_synopsis() {
+    cat - <<EOF
+lscores [-p PID | -l CORELIST] [-es][-i INDEX][-n LEN]
+
+Prints a list of CPU core IDs according to the given criteria.
+
+By default, the input core selection comprises the cores that are accessible to
+the parent process of lscores, i.e. its caller.
+
+You may supply the PID of another process whose cores are to be listed, or an
+explicit list of core IDs.
+
+Input core lists are core ID numbers, as found in /proc/cpuinfo, and items in
+the list may be separated by comas or spaces.  Sequences of consecutive IDs are
+possible with the notation N-N.  Example: 1,3,8-12 is a list made of cores 1, 3,
+8, 9, 10, 11 and 12.
+
+The printed output core list can be formatted with spaces instead of comas, and
+N-N sequences expanded, and even sublists are possible if you supply a start
+index and a length.
+
+Options
+
+--expand, -e
+    Expand all N-N notations in the output.
+
+--index, -i INDEX
+    Prints only the sublist that starts with the core at INDEX (zero-based) in
+    the input list.  If no length is provided, prints all subsequent cores till
+    the end of the input list.
+
+--len, -n LEN
+    Prints only that many core IDs, thus making a sublist. If no start index is
+    supplied, starts from index zero (first core of the input list).
+
+--list, -l CORELIST
+    Supplies an input list of core IDs instead of getting that of the calling
+    process or of a specified other process.
+
+--pid, -p PID
+    Input core list is calculated from the CPU affinity of the given process.
+
+--space, -s
+    Uses spaces as element separator instead of comas in the output.
+
+--version
+    Prints the lscores program version and terminates.
+
+EOF
+}
+
+set -u
+
+if ! options=$(getopt -n lscores -o ehi:l:n:p:s -l expand,help,index:,list:,len:,pid:,space,version -- "$@" )
+then
+    printf "option error.\n" >&2
+    exit 1
+fi
+eval set -- "$options"
+
+P=
+SEP=','
+STR=
+FROM=
+COUNT=
+EXPAND=false
+while [ -n "${1:-}" ]; do
+    case "$1" in
+        --expand|-e)  EXPAND=true ;;
+        --help|-h)    print_synopsis ; exit 0 ;;
+        --index|-i)   FROM="$2" ; shift ;;
+        --len|-n)     COUNT="$2" ; shift ;;
+        --list|-l)    STR="$2" ; shift ;;
+        --pid|-p)     P="$2" ; shift ;;
+        --space|-s)   EXPAND=true ; SEP=' ' ;;
+        --version)    echo "lscores 1.0"; exit 0 ;;
+        --) shift ; break ;;
+        -*) echo "$1: Unknown option" >&2 ; exit 1 ;;
+        *)  [ -z "$STR" ] && echo "$1: Unexpected argument." >&2 && exit 1
+            STR="$STR $1"
+    esac
+    shift
+done
+
+if [ -z "$STR" ]; then
+    # liste de CPU core IDs pour le shell courant
+    [ -z "$P" ] && P=${PPID:-$$}
+    STR=$(LC_ALL=C taskset -c -p $P | sed 's/.*: //')
+    [ $? != 0 ] && exit 1
+fi
+
+# output formatting
+if ! $EXPAND ; then
+    if [ -z "$FROM" -a -z "$COUNT" ]; then
+        printf '%s\n' "$STR"
+        exit 0
+    fi
+fi
+
+A=( )
+for ITEM in ${STR//,/ }; do
+    if [[ "$ITEM" =~ - ]]; then
+        A+=( $(seq ${ITEM%-*} 1 ${ITEM#*-}) )
+    else
+        A+=( "$ITEM" )
+    fi
+done
+
+MAX=${#A[@]}
+[ -z "$COUNT" ] && COUNT=$MAX
+[ -z "$FROM" ] && FROM=0
+TO=$((FROM+COUNT))
+[ $TO -gt $MAX ] && TO=$MAX
+
+SP=
+BUF=
+CONTIG=true
+FIRST=${A[$FROM]}
+LAST=$((FIRST-1))
+for((i=FROM;i<TO;i++)); do
+    ITEM=${A[i]}
+    if [ $ITEM != $((LAST+1)) ]; then
+        CONTIG=false
+    fi
+    BUF="${BUF}${BUF:+$SP}${ITEM}"
+    SP="$SEP"
+    LAST="$ITEM"
+done
+
+if [ $CONTIG = true -a $EXPAND = false ]; then
+    printf "%s-%s\n" $FIRST $LAST
+else
+    echo "$BUF"
+fi
+exit 0

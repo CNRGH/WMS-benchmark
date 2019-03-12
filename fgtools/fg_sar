@@ -1,0 +1,492 @@
+#!/bin/bash
+#==============================================================================
+#  This script is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  fg_sar is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with fg_sar.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright 2017 CEA/DRF/IBFJ CNRGH <www.cng.fr>
+#==============================================================================
+# Copyright: CEA - CNRGH
+# Author   : Nicolas Wiart  <nicolas.wiart@cng.fr>
+# Date     : 2017-12-07
+# Revised  : 2018-10-01
+#==============================================================================
+
+set -u
+set -o pipefail
+
+print_synopsis() {
+    cat - <<_EOF
+fg_sar {-h|--help|--version}
+fg_sar start [-d DIR][-i SECS] NAME
+fg_sar mark  [-d DIR][-l LABEL] NAME
+fg_sar stop  [-d DIR] NAME
+fg_sar calc  [-d DIR][-j JOBID | -f FILE][--title TITLE][-G] NAME
+
+fg_sar start
+
+Starts sar as a background process, writing to a file.
+The name of the file is based on the given NAME prefix and the SLURM job ID
+of the current job, or NAME-\$USER-HOSTNAME if outside of a job.
+The default name is 'global'.
+The output directory is the working directory, unless you specify another
+directory with -d.
+Inside a multi-node job, the basename of the files will be
+NAME-SLURM_JOB_ID-HOSTNAME.
+
+Output sar file:     DIR/NAME-SLURM_JOB_ID.sar
+Output runtime info: DIR/NAME-SLURM_JOB_ID.rtm
+Pid file for stop:   /tmp/NAME-SLURM_JOB_ID.sar.pid
+
+Options:
+    -d DIR   Ouput directory, defaults to '.' (current working directory).
+    -i SECS  Collect intervalle in seconds.
+
+fg_sar mark
+
+Will create a mark at this timestamp in the final plot.
+
+Options:
+    -l LABEL The small text to put at that mark on the plot.
+
+fg_sar stop
+
+Stops the sar background process.
+Reads the pid file to known the PID of the sar process to kill, deletes the
+pid file.
+
+fg_sar calc
+
+Extracts metrics from the sar file, calculates and formats the results
+into files in tab-separated value format (*.tsv). The *_fr.tsv one has comas ','
+as the decimal point, for easy import in French spreadsheet software.
+Creates a *.plot file for gnuplot, and executes gnuplot to produce a *.png file.
+
+Output files:
+DIR/NAME-SLURM_JOB_ID.tsv
+DIR/NAME-SLURM_JOB_ID_fr.tsv
+DIR/NAME-SLURM_JOB_ID.plot
+DIR/NAME-SLURM_JOB_ID.png
+
+Options:
+    -d DIR    Input and ouput directory to locate/write files, defaults to '.'
+              (current working directory).
+    -j JOBID  SLURM job ID if invoked outside of a job, and applies to a
+              finished job.
+    -f FILE   Path of the *.sar file, if fg_sar calc is invoked from a different
+              machine than the one that produced the file, and the hostname is
+              part of the filename (as happens outside of a job or inside a
+              multi-node job).
+    --title   Title of the graph in the png file.
+    -G        Do not draw a grid on the canvas in the png file.
+
+_EOF
+    return 0
+}
+
+
+d='.'
+action="${1:-}"
+prefix=global
+iden=
+secs=2
+TITLE=
+XTRA='set grid'
+unset LC_ALL
+export LC_TIME=C
+export LC_COLLATE=en_US.UTF-8
+export LC_CTYPE=en_US.UTF-8
+export LC_MESSAGES=en_US.UTF-8
+export LC_NUMERIC=C
+
+if [[ -n "$action" && "${action:0:1}" != '-' ]]; then
+    shift
+fi
+
+while [[ -n "${1:-}" && "${1:0:1}" = '-' ]]; do
+    case "$1" in
+        -d) d="${2:-.}" ; shift ;;
+        -f) f="${2:-}"
+            shift
+            d=$(dirname "$f")
+            iden=$(basename "$f" .sar)
+            ;;
+        -i) secs="${2:-2}" ; shift ;;
+        -j) JOBID="${2:-UNKNOWN}" ; shift ;;
+        -G) XTRA='' ;;
+        -h|--help) print_synopsis ; exit 0 ;;
+        -l|--label) TITLE="${2:-}" ; shift ;;
+        --title)    TITLE="${2:-}" ; shift ;;
+        --version)  echo "fg_sar 1.0" ; exit 0 ;;
+        --)  shift; break;;
+        -*) echo "$1: unknown option." >&2 ; exit 1 ;;
+        *) break ;;
+    esac
+    shift
+done
+
+if [[ -n "${1:-}" && "${1:0:1}" != '-' ]]; then
+    prefix="$1"
+    shift
+fi
+
+host=$(hostname -s)
+if [ -z "$iden" ]; then
+    iden=${JOBID:-}
+    iden=${SLURM_JOB_ID:-$iden}
+    if [ -n "$iden" ]; then
+        if [ ${SLURM_JOB_NUM_NODES:-1} -gt 1 ]; then
+            iden="$iden-$host"
+        fi
+    else
+        iden="$USER-$host"
+    fi
+fi
+hyperthreading=false
+VM=false
+
+if [ "$action" = start ]; then
+
+    # save some system info for final plot
+    # list CPU core IDs for the calling process
+    CPULIST=$(lscores -e -p ${PPID:-$$})
+    # detect real system memory and process-usable memory for plot limits
+    TOTALMEM=$(sed 's/MemTotal: *\([0-9]\+\) kB/\1/;q' /proc/meminfo) # in kB
+    REALMEM=$((TOTALMEM/1048576)) # in GiB
+    USABLEMEM=${SLURM_MEM_PER_CPU:-0}  # in MiB
+    if [ ${USABLEMEM:-0} = 0 ]; then
+        # no mem per cpu, try slurm usable mem (in MiB)
+        USABLEMEM=$(scontrol show node $host 2> /dev/null | sed 's/^.*RealMemory=\([0-9]\+\) .*$/\1/p;d')
+        if [ ${USABLEMEM:-0} = 0 ]; then
+            # no slurm mem, use total mem
+            USABLEMEM=$(echo "scale=2; x=${TOTALMEM}/1048576; if(x<1) print 0; x" | bc)
+        else
+            # convert slurm mem to GiB
+            USABLEMEM=$(echo "scale=2; x=${USABLEMEM}/1024; if(x<1) print 0; x" | bc)
+        fi
+        if [ -n "${SLURM_JOB_ID:-}" ]; then
+            # compute a mem ratio (GiB) based on number of allocated cores / total cores
+            NCPU=$(tr ',' '\n' <<< "$CPULIST" | wc -l)
+            TOTALCPU=$(getconf _NPROCESSORS_ONLN)
+            USABLEMEM=$(echo "scale=2; x=${USABLEMEM}*$NCPU/$TOTALCPU; if(x<1) print 0; x" | bc)
+        # else outside of job: process may use all system mem
+        fi
+    else
+        # valid mem per cpu (in MiB), multiply by number of cores and covert to GiB
+        NCPU=$(tr ',' '\n' <<< "$CPULIST" | wc -l)
+        USABLEMEM=$(echo "scale=2; x=$NCPU*${USABLEMEM}/1024; if(x<1) print 0; x" | bc)
+    fi
+    # detect hidden hyperthreading (Slurm at CCRT only allocates physical cores)
+    if [ -e /ccc ]; then
+        hw_buffer=$(hwloc-info 2> /dev/null)
+        hw_TotalCores=$(sed '/ Core /{s/^.*:.\([0-9]\+\) Core .*$/\1/g;q};d' <<< "$hw_buffer")
+        hw_PU=$(sed '/ PU /{s/^.*:.\([0-9]\+\) PU .*$/\1/g;q};d' <<< "$hw_buffer")
+        [ "$hw_PU" != "$hw_TotalCores" ] && hyperthreading=true
+    fi
+    # detect VM environments
+    if [ -f /usr/bin/vm-support ]; then
+        # vmware virtual machine
+        VM=true
+    else
+        if which facter &> /dev/null; then
+            facter | grep virtual &> /dev/null && VM=true
+        fi
+        if [ -x /usr/bin/systemd-detect-virt -a ${VM:-false} = false ]; then
+            # kvm virtual machine (e.g. PCOCC)
+            /usr/bin/systemd-detect-virt | grep '^kvm' &> /dev/null && VM=true
+        fi
+    fi
+    # save these runtime metadata into our rtm file
+    printf '%s\n%d\n%s\nhyperthreading=%s\nvm=%s\n' \
+        "$CPULIST" "$REALMEM" "$USABLEMEM" "$hyperthreading" "$VM" >> "$d/$prefix-$iden.rtm"
+    # start sar process and keep its pid
+    sar "$@" -o "$d/$prefix-$iden.sar" $secs > /dev/null &
+    r=$?
+    SARPID=$!
+    [ $r != 0 ] && "Failed to launch sar" "$@" "-o $d/$prefix-$iden.sar $secs" >&2 && exit $r
+    printf -- "%d\n" "$SARPID" > "/tmp/$prefix-$iden.sar.pid"
+    exit $?
+    
+elif [ "$action" = mark ]; then
+
+    f="/tmp/$prefix-$iden.sar.pid"
+    [ ! -e "$f" ] && echo "$f: file not found by fg_sar." >&2 && exit 2
+    SARPID=$(cat "$f")
+    [ ! -e /proc/$SARPID ] && echo "sar processus no longer executing!" >&2 && exit 2
+    # save these runtime marks into our rtm file
+    printf 'mark %s %s\n' $(date +%d-%H:%M:%S) "$TITLE" >> "$d/$prefix-$iden.rtm"
+    exit $?
+
+elif [ "$action" = stop ]; then
+
+    f="/tmp/$prefix-$iden.sar.pid"
+    [ ! -e "$f" ] && echo "$f: file not found by fg_sar." >&2 && exit 2
+    SARPID=$(cat "$f")
+    kill "$SARPID"
+    rm -f "$f"
+    [ ! -e "$d/$prefix-$iden.sar" ] && echo "$d/$prefix-$iden.sar: file not found by fg_sar." && exit 2
+    exit 0
+
+elif [ "$action" = calc -o "$action" = plot ]; then
+
+    [ ! -e "$d/$prefix-$iden.sar" ] && echo "$d/$prefix-$iden.sar: file not found by fg_sar." && exit 2
+    [ ! -e "$d/$prefix-$iden.rtm" ] && echo "$d/$prefix-$iden.rtm: file not found by fg_sar." && exit 2
+    REALMEM=$(sed '2p;d' "$d/$prefix-$iden.rtm")
+    CPULIST=$(sed '1p;d' "$d/$prefix-$iden.rtm")
+    NCPU=$(tr ',' '\n' <<< "$CPULIST" | wc -l)
+    grep 'hyperthreading=true' "$d/$prefix-$iden.rtm" &> /dev/null && hyperthreading=true
+    grep 'vm=true' "$d/$prefix-$iden.rtm" &> /dev/null && VM=true
+    if $hyperthreading ; then
+        MAXHT=$((100*NCPU))
+        NCPU=$((NCPU/2))
+        MAXCPU=$((100*NCPU))
+    else
+        MAXCPU=$((100*NCPU))
+        MAXHT=$MAXCPU
+    fi
+    MXTICS=
+    YTICS=100
+    MYTICS=
+    [ "${NCPU:-0}" -ge 8 ] && YTICS=200 && MYTICS=2
+    [ "${NCPU:-0}" -gt 12 ] && YTICS=400 && MYTICS=4
+    [ "${NCPU:-0}" -gt 40 ] && YTICS=800 && MYTICS=4
+    [ "${NCPU:-0}" = 14 -o "${NCPU:-0}" = 28 -o "${NCPU:-0}" = 56 ] && YTICS=700 && MYTICS=7
+    Y2TICS=4
+    MY2TICS=2
+    [ "$REALMEM" -gt 32 ] && Y2TICS=8
+    [ "$REALMEM" -gt 128 ] && Y2TICS=16
+    [ "$REALMEM" -gt 256 ] && Y2TICS=32
+    [ "$REALMEM" -ge 512 ] && Y2TICS=64
+    [ "$REALMEM" -ge 1024 ] && Y2TICS=128
+    [ "$REALMEM" -gt 2000 ] && Y2TICS=512
+
+    f="$d/$prefix-$iden-cpu.log"
+    q="$d/$prefix-$iden-mem.log"
+    g="$d/$prefix-$iden.tsv"
+    LANG=fr_FR.UTF-8 sar -f "$d/$prefix-$iden.sar" -P "$CPULIST" | tr ',' '.' > "$f"
+    LANG=fr_FR.UTF-8 sar -f "$d/$prefix-$iden.sar" -r | tr ',' '.' > "$q"
+    # sed '/^[^0-9]/d;/^$/d;s/ \+/\t/g;s/[.]/,/g' "$q" > "$$d/$prefix-$iden-mem.tsv"
+    START=$(sed "/idle/{s/^\([0-9:]\+\) .*\$/\1/p;q};d" "$f" | head -1)
+    [ -z "$START" ] && echo "Not first record found in $f" >&2 && exit 8
+    if [[ "$START" =~ ^0*([0-9]+):0*([0-9]+):0*([0-9]+)$ ]]; then
+        H=${BASH_REMATCH[1]}
+        M=${BASH_REMATCH[2]}
+        S=${BASH_REMATCH[3]}
+        START=$((${BASH_REMATCH[1]} * 3600 + ${BASH_REMATCH[2]} * 60 + ${BASH_REMATCH[3]}))
+    fi
+    MOREH=0 # full days as 24 * d hours
+    PREVH=0 # previous H value
+    MEMHDR=$(sed "/kbmem/{s/^[0-9:]* *//;s/kb//g;s/ \+/\t/g;p};d" "$q" | head -1)
+    printf 'Time\tUser\tSys\tNice\tIoWait\tSteal\tIdle\t%s\n' "$MEMHDR" > "$g"
+    sed '/^[^0-9]/d;s/\([0-9:]\+\).*$/\1/;/^$/d' "$f" | uniq | while read x; do
+        m=$(sed "s/ \+/\t/g;s/^${x}[\t ]\+\([^ ]\+.*\)\$/\1/p;d" "$q")
+        if [ "${m:0:5}" = kbmem ]; then
+            m=$(sed 's/[0-9A-Za-z_%]\+/0/g' <<< "$m")
+        else
+            m=$(awk '{print $1/1048576 "\t" $2/1048576 "\t" $3 "\t" $4/1048576 "\t" $5/1048576 "\t" $6/1048576 "\t" $7 "\t" $8/1048576 "\t" $9/1048576 "\t" $10/1048576 }' <<< "$m")
+        fi
+        if [[ "$x" =~ ^0*([0-9]+):0*([0-9]+):0*([0-9]+)$ ]]; then
+            H=${BASH_REMATCH[1]}
+            M=${BASH_REMATCH[2]}
+            S=${BASH_REMATCH[3]}
+        else
+            continue
+        fi
+        if [ $H -lt $PREVH ]; then
+            # we crossed midnight
+            MOREH=$((MOREH+24))
+        fi
+        PREVH=$H
+        H=$((H+MOREH))
+        # convert to relative timestamp
+        T=$((3600*H+60*M+S))
+        T=$((T-START))
+        H=$((T/3600))
+        M=$((T-3600*H))
+        M=$((M/60))
+        S=$((T-3600*H-60*M))
+        y=$(printf -- '%02d:%02d:%02d' "$H" "$M" "$S")
+        awk '$1 ~ /^'"$x"'/ {u += $3; n += $4; s += $5; w += $6; l += $7; i += $8} END {print "'$y'" "\t" u "\t" s "\t" n "\t" w "\t" l "\t" i "\t" "'"${m}"'"}' "$f"
+    done >> "$g"
+    sed 's/[.]/,/g' "$g" > "$d/$prefix-${iden}_fr.tsv"
+    rm -f "$f"
+    rm -f "$q"
+
+    which gnuplot &> /dev/null || module load gnuplot
+    GNUPLOTV=$(gnuplot --version | cut -f2 -d' ')
+    [ -n "$GNUPLOTV" -a "$GNUPLOTV" = '4.2' ] && module load gnuplot
+    if ! which gnuplot &> /dev/null; then exit 1; fi
+
+    N=$(wc -l < "$g")
+    [ "$N" = 0 -o "$N" = 1 ] && echo "No data in $g" >&2 && exit 3
+    WIDTH=720
+    [ ${N:-0} -gt 100 ] && WIDTH=840
+    [ ${N:-0} -gt 300 ] && WIDTH=1024
+    [ ${N:-0} -gt 500 ] && WIDTH=1280
+    [ ${N:-0} -gt 610 ] && WIDTH=1400
+    [ ${N:-0} -gt 790 ] && WIDTH=1600
+    [ ${N:-0} -gt 1050 ] && WIDTH=2000
+
+    FMT='%H:%M:%S'
+    FMT2='hh:mm:ss'
+    XMAX=$(tail -1 "$g" | sed 's/^\([0-9]\+:[0-9]\+:[0-9]\+\)[\t ].*$/\1/p;d')
+    [ -z "$XMAX" ] && echo "No data in $g" >&2 && exit 3
+    H="${XMAX/:*}"
+    M="${XMAX%:*}"
+    M="${M/*:}"
+    if [ "${H:-}" = 00 ]; then
+        # total time < 1h
+        if [ "${M:-}" = 00 ]; then
+            # total time < 1mn, use second format
+            FMT='%S'
+            FMT2='s'
+        else
+            # total time >= 1mn, < 1h
+            if [ "${M:0:1}" = 0 -o "${M:-}" -lt 15 ]; then
+                # < 15 mn
+                # use m:s format
+                FMT='%M:%S'
+                FMT2='mm:ss'
+                MXTICS=2
+                [ "${M:0:1}" = 0 ] && MXTICS=4
+            else
+                # > 15 mn, < 60 mn
+                # use m format
+                FMT='%M'
+                FMT2='mn'
+                [ "${M:-}" -lt 30 ] && MXTICS=2
+            fi
+        fi
+    elif [ "${H:-0}" -ge 12 ]; then
+        # total time >= 12h, use hour format
+        FMT='%H'
+        FMT2='h'
+        if [ "$H" -gt 23 ]; then
+            FMT='%d-%H'
+            FMT2='jour-h'
+        fi
+    else
+        # total time between 1h and 12h
+        # use h:m:s format with 30' minor tics
+        MXTICS=2
+        # if < 8h, apply 15' minor tics
+        [ "${H:0:1}" = 0 -a "${H:1:1}" -lt 8 ] && MXTICS=4
+    fi
+
+    FROM=6
+    if ! $VM ; then FROM=5; fi
+
+    SS=
+    [ ${NCPU:-0} != 1 ] && SS=s
+
+    BUFFER=$(grep '^mark ' "$d/$prefix-$iden.rtm" 2> /dev/null)
+    MOREH=0 # full days as 24 * d hours
+    PREVH=0 # previous H value
+    while read MARK; do
+        MARK="${MARK/mark }"
+        TIMESTAMP="${MARK/ *}"
+        LABEL="${MARK#* }"
+        if [[ "$TIMESTAMP" =~ ^([0-9]+)-0*([0-9]+):0*([0-9]+):0*([0-9]+)$ ]]; then
+            DAY=${BASH_REMATCH[1]}
+            H=${BASH_REMATCH[2]}
+            M=${BASH_REMATCH[3]}
+            S=${BASH_REMATCH[4]}
+        else
+            continue
+        fi
+        if [ $H -lt $PREVH ]; then
+            # we crossed midnight
+            MOREH=$((MOREH+24))
+        fi
+        PREVH=$H
+        H=$((H+MOREH))
+        # convert to relative timestamp
+        T=$((3600*H+60*M+S))
+        T=$((T-START))
+        H=$((T/3600))
+        M=$((T-3600*H))
+        M=$((M/60))
+        S=$((T-3600*H-60*M))
+        TIMESTAMP=$(printf -- '%02d:%02d:%02d' "$H" "$M" "$S")
+        XTRA=$(printf -- "%s\n%s\n%s" "$XTRA" \
+            "set arrow from \"${TIMESTAMP}\", graph 0 to \"${TIMESTAMP}\", graph 1 nohead front linestyle 1" \
+            "set label \"${LABEL}\" at \"${TIMESTAMP}\",1 left rotate front offset character 1,8")
+    done <<< "$BUFFER"
+
+    # 1 Time
+    # 2 User
+    # 3 Sys
+    # 4 Nice
+    # 5 Iowait
+    # 6 Steal  (only relevant when running inside VM)
+    # 7 Idle
+    # 8 memfree
+    # 9 memused
+    # 10 %memused
+    # 11 buffers
+    # 12 cached
+    # 13 commit
+    # 14 %commit
+
+    # https://sites.google.com/site/hrsckim/useful-info/gnuplot/lineandpointtypes
+
+    cat - > "$d/$prefix-$iden.plot" <<EOF
+set terminal pngcairo size $WIDTH, 400 enhanced truecolor font "LiberationSans,10" fontscale 1.0
+set output "$d/$prefix-$iden.png"
+set title "${TITLE:-Profil $prefix}" font "LiberationSans-Bold,12"
+set key outside top right invert
+set style fill solid
+set xdata time
+set timefmt "%H:%M:%S"
+set format x "$FMT"
+set xrange [*:'${XMAX}']
+set xtics out
+${MXTICS:+set mxtics $MXTICS}
+set yrange [0:${MAXCPU} < * < ${MAXHT}]
+set y2range [0:${REALMEM} < * < ${REALMEM}]
+set ytics out $YTICS nomirror
+${MYTICS:+set mytics $MYTICS}
+set y2tics out $Y2TICS border
+set my2tics $MY2TICS
+set xlabel "Temps ($FMT2)"
+set ylabel "%CPU"
+set y2label "Mém (Gio)"
+set style line 1 lt rgb "gray20" pointtype 0 linewidth 1
+set style line 2 lt rgb "red" pointtype 0 linewidth 1
+set style line 3 lt rgb "dark-red" pointtype 0 linewidth 1
+set style line 4 lt rgb "gold" pointtype 0 linewidth 1
+set style line 5 lt rgb "black" pointtype 0 linewidth 1
+set style line 6 lt rgb "magenta" pointtype 0 linewidth 1
+set style line 9 lt rgb "dark-green" pointtype 0 linewidth 2
+$XTRA
+plot \
+  for [i=${FROM}:2:-1] \
+    "$d/$prefix-$iden.tsv" using 1:(sum [col=2:i] column(col)) \
+      title columnheader(i) \
+      with filledcurves x1 linestyle i, \
+  "$d/$prefix-$iden.tsv" using 1:9 title "Used mem" with lines linestyle 9 axes x1y2
+EOF
+    gnuplot "$d/$prefix-$iden.plot"
+    r=$?
+    [ $r != 0 ] && echo "gnuplot failed!" >&2 && exit 1
+    # insert additional info into the image
+    convert "$d/$prefix-$iden.png" -gravity NorthWest -pointsize 12 \
+        -annotate +$((WIDTH-150))+250 "Durée totale : ${XMAX}\nCœur$SS alloué$SS : ${NCPU}" "$d/$prefix-$iden.png"
+    exit $?
+
+elif [ "$action" = '-h' -o "$action" = '--help' ]; then
+    print_synopsis
+else
+    printf -- "%s: unknown action.\n" "$action" >&2
+    exit 1
+fi
+exit 0

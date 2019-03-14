@@ -1,4 +1,6 @@
-[![License: CeCILL](https://img.shields.io/badge/license-CeCILL-blue.svg)](http://www.cecill.info/)
+[![pipeline status](https://gitlab.com/cnrgh/WMS-benchmark/badges/master/pipeline.svg)](https://gitlab.com/cnrgh/WMS-benchmark)
+[![License: CeCILL](https://img.shields.io/badge/license-CeCILL-blue.svg)](http://www.cecill.info)
+[![doi url](https://img.shields.io/badge/DOI-10.1109/BIBM.2018.8621141-blue.svg)](https://doi.org/10.1109/BIBM.2018.8621141)
 
 WMS-benchmark
 =============
@@ -18,7 +20,7 @@ CITATION
 Please cite WMS-benchmark using this citation:
 
 E. Larsonneur, J. Mercier, N. Wiart, E. Le Floch, O. Delhomme and V. Meyer, "Evaluating Workflow Management Systems: A Bioinformatics Use Case," 2018 IEEE International Conference on Bioinformatics and Biomedicine (BIBM), Madrid, Spain, 2018, pp. 2773-2775.
-[doi: 10.1109/BIBM.2018.8621141](https://dx.doi.org/10.1109/BIBM.2018.8621141).
+[doi: 10.1109/BIBM.2018.8621141](https://doi.org/10.1109/BIBM.2018.8621141).
 
 A supplementary table and a corrected figure are available in `figures/`.
 

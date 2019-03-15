@@ -22,20 +22,20 @@ Please cite WMS-benchmark using this citation:
 E. Larsonneur, J. Mercier, N. Wiart, E. Le Floch, O. Delhomme and V. Meyer, "Evaluating Workflow Management Systems: A Bioinformatics Use Case," 2018 IEEE International Conference on Bioinformatics and Biomedicine (BIBM), Madrid, Spain, 2018, pp. 2773-2775.
 [doi: 10.1109/BIBM.2018.8621141](https://doi.org/10.1109/BIBM.2018.8621141).
 
-A supplementary table and a corrected figure are available in `figures/`.
+A supplementary table and a corrected figure are available in the [figures/](figures) directory.
 
 HOW TO RUN THE BENCHMARK
 ------------------------
-See `script/all.sh` for details.
+See [scripts/all.sh](scripts/all.sh) for details.
 
-The full dataset is available [here](https://www.cnrgh.fr/download/96203eab325de3c0bda48009aaa15fd7cf339b26/) or [here](https://dx.doi.org/10.5281/zenodo.2592064).<br>
+The full dataset is available [here](https://www.cnrgh.fr/download/96203eab325de3c0bda48009aaa15fd7cf339b26/) or [here](https://dx.doi.org/10.5281/zenodo.2592064).
 
 We proposed ten metrics for evaluating the efficiency of workflow management systems,
-they were extracted from [pidstat](https://linux.die.net/man/1/pidstat), `fg_sar` and `benchme` output files. `fg_sar` uses [sar](https://linux.die.net/man/1/sar), and `benchme` uses [time](https://linux.die.net/man/1/time) to compute metrics. `fg_sar` and `benchme` are a part of `fgtools` toolkit and can be found in the directory `./fgtools`. `fg_sar` requires [sysstat<=11.5.2](http://sebastien.godard.pagesperso-orange.fr/).
+they were extracted from [pidstat](https://linux.die.net/man/1/pidstat), `fg_sar` and `benchme` output files. `fg_sar` uses [sar](https://linux.die.net/man/1/sar), and `benchme` uses [time](https://linux.die.net/man/1/time) to compute metrics. `fg_sar` and `benchme` are a part of `fgtools` toolkit and can be found in the [fgtools/](fgtools) directory. `fg_sar` requires [sysstat<=11.5.2](http://sebastien.godard.pagesperso-orange.fr/).
 
-<br>
 To know how to run the workflow management systems with a toy dataset,
-please see the `gitlab-ci.yml` file.
+please see the [.gitlab-ci.yml](.gitlab-ci.yml) file and
+its [execution log](https://gitlab.com/cnrgh/WMS-benchmark/pipelines?ref=master).
 
 AUTHORS
 -------

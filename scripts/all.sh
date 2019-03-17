@@ -26,3 +26,5 @@ cd ~/WMS-benchmark/workflows
 ##draw radar plot
 ./get_radar_plot_benchWMS.sh
 
+#optional - change resolution of sar profiles
+#./resize_all_fgsar_plot.sh

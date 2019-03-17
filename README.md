@@ -50,4 +50,4 @@ WMS-benchmark is released under the terms of the CeCILL license,
 a free software license agreement adapted to both international and French legal matters
 that is fully compatible with the GNU GPL, GNU Affero GPL and/or EUPL license.
 
-For further details see LICENSE file or check out http://www.cecill.info/.
+For further details see [LICENSE](LICENSE) file or check out http://www.cecill.info/.

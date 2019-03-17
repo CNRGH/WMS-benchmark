@@ -365,7 +365,7 @@ task mergeLodScores {
 
    command <<<
      bash -ce "
-       #fg_sar mark -l '--------------------------mergeResults'
+       #fg_sar mark -l '--------------------------mergeResults' || echo 'ignore fg_sar mark'
        mkdir -p ${outDir}/mergeResults/
        cat ${sep=' ' inSglDomLodScoreFiles} > ${outDir}/mergeResults/results_singlepoint_merged_dominant.txt 
        cat ${sep=' ' inSglRecLodScoreFiles} > ${outDir}/mergeResults/results_singlepoint_merged_recessive.txt 

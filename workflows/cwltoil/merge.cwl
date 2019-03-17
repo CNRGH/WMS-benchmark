@@ -36,6 +36,9 @@ arguments:
   #- mark 
   #- -l 
   #- '--------------------------mergeResults'
+  #- '||'
+  #- echo
+  #- 'ignore fg_sar mark'
   #- '&&'
   - mkdir
   - -p

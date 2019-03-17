@@ -8,7 +8,7 @@
 
 set -eo pipefail
 
-#fg_sar mark -l "--------------------------mergeResults"
+#fg_sar mark -l "--------------------------mergeResults" || echo 'ignore fg_sar mark'
 
 OUTDIR=$1
 

@@ -454,7 +454,7 @@ process mergeResults {
     file '.command.begin'
 
     """
-    #fg_sar mark -l "--------------------------mergeResults"
+    #fg_sar mark -l "--------------------------mergeResults" || echo 'ignore fg_sar mark'
     cat $sgl_dom > results_singlepoint_merged_dominant.txt
     cat $sgl_rec > results_singlepoint_merged_recessive.txt
     cat $multi_dom > results_multipoint_merged_dominant.txt

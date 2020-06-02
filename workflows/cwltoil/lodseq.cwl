@@ -209,7 +209,7 @@ $namespaces:
   edam: http://edamontology.org/
 
 $schemas:
- - https://schema.org/docs/schema_org_rdfa.html
+ - https://schema.org/version/latest/schema.rdf
  - http://edamontology.org/EDAM_1.21.owl
 
 s:author:

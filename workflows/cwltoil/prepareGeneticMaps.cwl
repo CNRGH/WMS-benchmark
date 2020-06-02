@@ -60,7 +60,7 @@ $namespaces:
   s: https://schema.org/
 
 $schemas:
- - https://schema.org/docs/schema_org_rdfa.html
+ - https://schema.org/version/latest/schema.rdf
 
 s:author:
   - class: s:Person

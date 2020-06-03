@@ -83,7 +83,7 @@ variables:
         - pushd lodseq/ 
         - conda env create -n lodseq --file environment.yaml
         - cromwell_version=${CI_JOB_NAME/*-}
-        - conda install -n lodseq -c conda-forge -c bioconda openjdk=8 sbt scala
+        - conda install -n lodseq -c conda-forge -c bioconda openjdk=8 java-jdk=8 sbt scala
         - curl -LO https://github.com/broadinstitute/cromwell/releases/download/${cromwell_version}/cromwell-${cromwell_version}.jar
         - curl -LO https://github.com/broadinstitute/cromwell/releases/download/${cromwell_version}/womtool-${cromwell_version}.jar
         - source activate lodseq
